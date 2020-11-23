@@ -1,0 +1,342 @@
+---
+title: "Gender Neutral Names"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(plotly)
+library(knitr)
+
+#Read in Master file
+master <- readRDS(file = "./master_names")
+name_sums <- readRDS(file = "./name_sums")
+
+```
+Ever since I heard of a famous actress that shares my name, Evan, which is a typically male name, I got to wondering: what really makes a name gendered? How many children are given names that are dominated by the other gender? How many names are truely gender neutral? My hypothesis was, that in the current American social climate, it is more common for girls to recieve more "masculine" names than it is for boys to get more "feminine" names. But is this backed up by the data? This is a very surface-level exploration of those questions.
+
+The United States Social Security Administration publishes a list the names given to babies each year in the country, going back to 1880. (The list can be found here: https://www.ssa.gov/oact/babynames/limits.html). Along with the total count, the gender of the baby is recorded. Code for processing the data is in the R file in this folder. In this case, I was interested in investigating the trends of names over time, and in particular, how these trends interact with gender. 
+
+```{r}
+
+#We see that the vast majority of names in 2014 have less than 100 occurrences, 
+# yet they are not necessarily extremely odd names
+#For example we see "Cleo" and also alternate spellings like "Hollie" both at 100
+
+common <- name_sums %>% filter(Sum >= 10000)
+
+#For the purposes of this exercise, we are looking for names that are relatively common among both
+# male and female and investigating the trends over time. 
+#I have arbitrarily decided that over 10000 total occurrences is a good minimum for exploration
+#I will bring back alternate spellings in the final analysis
+
+common_pairs <- common[common$Name %in% common$Name[duplicated(common$Name)],]
+
+#Now we have 116 names to investigate. Ignore the sums and extract it as a list
+names_to_investigate <- common_pairs %>% distinct(Name)
+names_to_investigate <- names_to_investigate$Name
+
+#Raw data for all 116 pairs. 
+pairs_to_investigate <- master %>% filter(Name %in% names_to_investigate)
+
+#Define a function that will visualize each pair
+
+plot_name <- function(name){
+  to_plot <- master %>% filter(Name == as.character(name))
+  ggplot(to_plot, aes(x = Year, y = Count, fill = Sex, color = Sex)) + 
+    geom_line() +
+    scale_x_continuous(breaks = seq(1880, 2020, 20)) + 
+    labs(title = to_plot$Name) +
+    theme_minimal()
+}
+
+#Function to account for common alternate spellings - use later
+
+plot_names <- function(names){
+  name_list <- list()
+  for (i in length(names)){
+    name_list[[i]] <- master %>% filter(Name == names[i])
+  }
+  name_table <- bind_rows(name_list)
+  ggplot(name_table, aes(x = Year, y = Count, fill = Sex, color = Sex)) + 
+    geom_line() +
+    scale_x_continuous(breaks = seq(1880, 2020, 20)) + 
+    labs(title = names[1], subtitle = paste(names[-1], collapse = " ")) +
+    theme_minimal()
+}
+
+```
+
+### What is a common name, anyway? 
+
+Worth noting in advance: for privacy concerns, the SSA doesn't report names with fewer than 5 instances, and hypens or spaces are not reported, so James-Matthew would be recorded as Jamesmatthew (M: 21).
+
+Let's start with some simple facts. The SSA has recorded 109,173 distinct names in the last 140 years, and the median number of instances of a given name are 45. The vast majority of the names are clustered with very few people ever having recieved them.
+
+```{r}
+p <- ggplot(name_sums, aes(x = Sum, color = Sex)) + 
+  geom_density() +
+  scale_x_log10()
+
+ggplotly(p)
+
+```
+We see that male and female names follow the same distribution (displayed logarithmically)
+
+In fact, less than 2.5% of the names have been given to more than 10,000 people. But what are these uncommon names? 
+
+The 109,173 names are too many to go through by hand, but a random sampling shows just what we're dealing with. Many of them are alternate spellings, from the very rare (Kasside, F: 5) to the slightly less rare (Matilyn, F: 825). Some are taken from place names (Venice, (F: 2697, M: 233)) or are last-names-turned-first-names (Lindbergh, M: 473, predictably most popular around 1927). Many are names that are, perhaps, more popular in the (presumed) country of origin of the parents like the Quaranic names Musa (M: 3148, F: 31) or Taqwa (F: 91).
+
+Some are a bit weird, like Icie (F: 1354). Some are more mysterious, such as Infantof which had a brief run 1991-1994 with 124 recipients, evenly split across gender. (Does anyone know the story behind that?) Some are fun (Jazz, F: 536, M: 749). Some likely have a sad story behind them, like Mammie (F: 2522) which peaks around 1925. And some are just plain bad - a sampling: Savage (M: 50), Brick (M: 401), Stalin (M: 103), Abcde (F: 380), Imunique (F: 268), or Jihad (M: 1902). Sorry, kids.
+
+Two rather gender neutral "names" I have exlcuded: Baby (M: 6111, F: 5895) and Unknown (F: 9481, M: 9390) because there might be something else at play here. The Babys (babies?) peak at around 1990, and maybe it is just a truely gender-neutral name. The Unknowns have two peaks, one in the early 1950s and a one in the 1990s. A quick search has not lead anywhere, but I am suspicious of the idea that these are true names. My guess is that these are placeholders reported to the SSA, perhaps by parents who don't want to register their children, which can be the case in some isolated religious communities.
+
+Any definition of what counts as a "common name" will be necessarily arbitrary. And any arbitrary cutoff line will put some names under it that, perhaps, don't deserve to be there. Particularly, a high limit might cut off names with low absolute numbers because they were either common 100 years ago (when the population was smaller) or are just starting to trend today.
+
+
+```{r}
+ggplot(data = name_sums, aes(y = Sum, color = Sex, x = Sex)) + 
+  geom_jitter(size = 1, width = 0.3, color = "Navy", alpha = 0.2) +
+  scale_y_log10() +
+  geom_hline(aes(yintercept = 6000), color = "red", alpha = 0.6) +
+  labs(title = "Distribution of Names", subtitle = "and names above 6000 instances") +
+  theme(plot.title = element_text(hjust = 0.5), plot.subtitle = element_text(hjust = 0.5), legend.position = c(0.85,0.95)) 
+
+```
+
+We can immediately see that the male names are noticibly "thinner", or, under the assumption of roughly equal numbers of boys and girls, there are more girl names with fewer instances. In fact of the top 10 names only 1 is typically given to girls, Mary.
+
+I have chosen to filter for the names with at least 6000 total occurrences in either the male or female column. Of these names, 116 are to some degree or another gender neutral in that they have 6000 instances for both genders. With 351,653,025 total observations recorded (recall, names with fewer than 5 occurrances are not counted and the names of immigrants not born in the US are not recorded), a name must only be given to 0.0017% of babies to be counted for our analysis.
+
+This leaves us with 1403 names given to girls and 970 names given to boys.
+
+### Categorizing the names
+
+#### Names dominanted by one gender
+
+Many of the names in the list are far more popular with one gender than the other, and as such won't be considered as "true" gender-neutral names. Just like the boy named Sue (of which there are 519 recorded), there are also 15,165 male Marys and 22,698 male Courtneys, however these make up only 1.8% and 8.8% of the instances of these names. Similarly, there are 12,907 female Davids, 23,399 Josephs, and 20,099 Roberts, which are similarly dwarfed by their male counterparts.
+
+Again somewhat arbitrarily, I have decided that if 15% or less of cases go to one gender, we can call the name dominated by the other. First, we look at the female dominated names:
+
+```{r}
+#female dominant
+female_dom <- c("Addison", "Ashley", "Carmen", "Courtney", "Mary", "Robin", "Sandy", "Shelby", "Stacey", "Stacy")
+
+  #check
+  f <- name_sums %>% 
+    filter(Name %in% female_dom) %>% 
+    spread(key = Sex, value = Sum) %>% 
+    mutate(ratio = M/F) %>%
+    arrange(desc(ratio)) %>%
+    rename("Ratio male to female" = ratio)
+  
+  kable(f, full_width = F, table.attr = "style='width:50%;'", bootstrap_options = c("striped", "hover"))
+```
+
+(Note that tables are not sortable when hosted on Github). The most interesting thing on this (relatively short) list might be the presence of Robin. Being the famous sidekick of a superhero didn't translate to a boom of boy Robins! Next, we see the male dominated names:
+```{r}
+#male dominant
+male_dom <- c("Adrian", "Cameron", "Charles", "Chris", "Christian", "Dale", "David", "Devin", "Dylan", "Eddie", "Francis", "Freddie", "Hunter", "James", "Jayden", "Jerry", "Jesse",
+  "Joe", "John", "Joseph", "Logan", "Micah", "Michael", "Parker", "Shawn", "Robert", "Ryan", "Tyler", "William")
+
+  #check
+  m <- name_sums %>% 
+    filter(Name %in% male_dom) %>% 
+    spread(key = Sex, value = Sum) %>% 
+    mutate(ratio = F/M) %>%
+    arrange(desc(ratio)) %>%
+    rename("Ratio female to male" = ratio)
+  
+  kable(m, full_width = F)
+
+```
+
+Not only is the list longer, but we also see a trend that girls sometimes receive names which are nicknames of masculine names (we will see this more later). This leads us to our first hint towards a conclusion. There is total of `r as.integer(sum(m$F))` girls with "masculine" names and `r as.integer(sum(f$M))` boys with "feminine" names, which suggests that it may be more common for girls to recieve typically (but not overwhelmingly) masculine names than vice versa. At the very least, this is true of names which are most typically dominated by the other gender. Of course this has been influenced by our choice of eliminating rare names and where we draw the line of when to pick as gender neutral.
+
+#### Somewhat gender-neutral names 
+
+As we know, names rise and fall in cycles. What was once popular falls out of fashion, but perhaps comes back later. This can be seen with the return of these old-fashioned girl names.
+
+```{r, figures-side, fig.show="hold", out.width="45%"}
+plot_name("Emma")
+plot_name("Zelda")
+```
+
+This is also the trend for many of our more gender netural names. First, we deal with those that are still clearly favored for one gender, even though they exceed the 15% ratio.
+
+```{r, include=FALSE}
+#increase or decline in tandem: F dom
+tandem_f <- c("Alexis", "Ariel", "Avery", "Bailey", "Billie", "Bobbie", "Cleo", "Dana", "Dominique", "Guadalupe", "Morgan",
+  "Jamie", "Kasey", "Kelly", "Laverne", "Lynn", "Marion", "Ollie", "Shannon",
+  "Taylor", "Tracy")
+
+
+#increase or decline in tandem: M dom
+tandem_m <- c("Dakota", "Dallas", "Devon", "Hayden", 
+  "Jaden", "Jimmie", "Johnnie", "Jordan", "Lee", "Merle", "Noel", 
+  "Terry")
+
+#increase or decline in tandem: tie
+tied <- c("Amari", "Armani", "Carey", "Casey", "Devyn", "Emerson", "Finley", "Jackie", "Jaylin", "Jessie", "Jody", "Justice", "Frankie",
+  "Kerry", "Kris", "Pat", "Payton", "Peyton", "Sage", "Skyler", "Tommie", "Rowan")
+
+  #Peytons both go here because imo they are fundamentally the same name. Ratio F/M is:
+  ((52437+71280)/(23719+48477))
+
+#women take over male name
+women_take <- c("Aubrey", "Blair", "Gale", "Harley", "Kendall", "Kim", "Leslie", "Quinn", "Reese", "Riley", "Sidney", "Emery",
+  "Skylar")
+
+#men take over female name
+men_take <- c("Ashton", "Robbie")
+
+#cross-cultural
+cross_cult <- c("Angel", "Jaime", "Jan", "Jean", "Rene")
+
+#in process or otherwise interesting
+interesting <- c("Blake", "Charlie", "Elisha", "Leighton", "Loren", "Mckinley")
+
+```
+
+```{r, fig.show="hold", out.width="45%"}
+plot_name("Taylor")
+plot_name("Ollie")
+plot_name("Dakota")
+plot_name("Terry")
+```
+
+The full list of names which are "somewhat" gender neutral, and rise and fall in tandem as the previous images show, follow. First the female-domainated names:
+```{r}
+f_tand <- name_sums %>% 
+    filter(Name %in% tandem_f) %>% 
+    spread(key = Sex, value = Sum) %>% 
+    mutate(ratio = F/M) %>%
+    arrange(desc(ratio)) %>%
+    rename("Ratio female to male" = ratio)
+  
+  kable(f_tand, full_width = F)
+```
+
+and then the male ones:
+```{r}
+m_tand <- name_sums %>% 
+    filter(Name %in% tandem_m) %>% 
+    spread(key = Sex, value = Sum) %>% 
+    mutate(ratio = F/M) %>%
+    arrange(desc(ratio)) %>%
+    rename("Ratio female to male" = ratio)
+  
+  kable(m_tand, full_width = F)
+```
+
+Here, we have `r as.integer(sum(f_tand$M))` boys being given names which are slightly more female-dominated and `r as.integer(sum(m_tand$F))` girls in the opposite situation, which is the opposite of the trend we saw in the more highly gendered names. Before we move on, a few honorable mentions: the cross-cultural names {`r cross_cult`} are actually pronounced differently, where the Anglo pronunciation is feminine, while the names are masculine in their original languages.
+
+#### The ties
+
+```{r}
+
+ties <- name_sums %>% 
+    filter(Name %in% tied) %>% 
+    spread(key = Sex, value = Sum) %>% 
+    mutate(s = F+M, ratio = F/M) %>% 
+    arrange(desc(s)) %>%
+    rename("Ratio female to male" = ratio, "Sum" = s)
+  
+  kable(ties, full_width = F)
+
+```
+
+Some of these names are a bit suspicious as truly gender neutral. Carey is an alternate spelling of Carrie (heavily female-dominated), likewise Devyn of Devin and Tommie of Tommy (male-dominated), and some are again nicknames (Kris is short for several feminine and masculine names). Payton and Peyton are essentially equivalent to one another with the same pattern. All of the names more or less rise and fall in tandem or have similar patters offset by a few years:
+```{r, fig.show="hold", out.width="45%"}
+plot_name("Kerry")
+plot_name("Skyler")
+```
+
+(Note here that the significantly more popular name Skylar is much more commonly given to girls). 
+
+However, there are some exceptions. Frankie, for example, is a relatively gender neutral name that has peaks for its male and female usage separated by several decades.
+
+```{r}
+plot_name("Frankie")
+```
+
+#### Changing names
+
+In particular we are interested to see if there is any trend of traditionally masculine or feminine names changing roles. There are only two names that seem to really show any kind of masculine takeover:
+
+```{r}
+mtake <- name_sums %>% 
+    filter(Name %in% men_take) %>% 
+    spread(key = Sex, value = Sum) %>% 
+    mutate(s = F+M, ratio = F/M) %>% 
+    arrange(desc(s)) %>%
+    rename("Ratio female to male" = ratio, "Sum" = s)
+  
+  kable(mtake, full_width = F)
+```
+
+Worth noting is that Robbie is a relatively uncommon name, and rare compared to Robert or Robin. Ashton, on the other hand, unambiguously went from being gender neutral to male-dominated while no names went from female-dominated to male-dominated.
+
+```{r, fig.show="hold", out.width="45%"}
+plot_name("Ashton")
+plot_name("Robbie")
+```
+
+In contrast, more names have moved from the realm of boy names to that of girl names.
+
+```{r}
+ftake <- name_sums %>% 
+    filter(Name %in% women_take) %>% 
+    spread(key = Sex, value = Sum) %>% 
+    mutate(s = F+M, ratio = F/M) %>% 
+    arrange(desc(s)) %>%
+    rename("Ratio female to male" = ratio, "Sum" = s)
+  
+  kable(ftake, full_width = F)
+```
+
+The following examples are typical of the pattern: a moderately popular male name begins to start to be given to baby girls. Just as this trend peaks, its popularity for boys falls and it remains much more dominant among girls in the following decades.
+
+```{r, fig.show="hold", out.width="45%"}
+plot_name("Kendall")
+plot_name("Leslie")
+```
+
+Some names show this trend even more dramatically:
+
+```{r, fig.show="hold", out.width="45%"}
+plot_name("Quinn")
+plot_name("Reese")
+```
+
+Lastly, there are a few names which are difficult to classify. 
+
+```{r}
+intre <- name_sums %>% 
+    filter(Name %in% interesting) %>% 
+    spread(key = Sex, value = Sum) %>% 
+    mutate(s = F+M, ratio = F/M) %>% 
+    arrange(desc(s)) %>%
+    rename("Ratio female to male" = ratio, "Sum" = s)
+  
+  kable(intre, full_width = F)
+```
+
+These are the names that seem to be undergoing one of these processes, but the trend is too current to conclusively sort. Except for the two names below, all of these names are trending in the direction of a traditionally male name turning into one more commonly given to girls. 
+
+```{r, fig.show="hold", out.width="45%"}
+plot_name("Elisha")
+plot_name("Loren")
+```
+
+Of course, Loren is dwarfed by Lauren, leaving Elisha as perhaps the only new-ish (albiet uncommon) gender neutral name.
+
+### Conclusions
+
+The "true" reasons behind the naming trends involves a much more detailed analysis of American culture. However, several things are clear: first, the vast majority of names are highly gendered; second, it does appear that girls are more likely to be given traditionally masculine names than vice versa, even to the point of "taking over" that name, although that case is fairly rare; and third, many of these gender-neutral names are in fact shared diminuitive forms of classically male or female names and are still rare compared to the full versions. One interesting trend is the presidential-last-name-as-first-name. Taylor, McKinley, and Tyler fit into this category, joining the very female Madison and Reagan along with the very male Lincoln and Jackson as part of a larger trend in American baby-naming of converting surnames into given names. 
